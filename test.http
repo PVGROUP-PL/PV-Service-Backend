@@ -1,0 +1,103 @@
+### ==========================================================
+### SCENARIUSZ TESTOWY MVP - OD ZERA DO REZERWACJI
+### ==========================================================
+
+# --- CZĘŚĆ 1: WŁAŚCICIEL ---
+
+# Krok 1: Zarejestruj nowego WŁAŚCICIELA
+# @name MvpOwnerRegister
+POST http://localhost:3000/api/register
+Content-Type: application/json
+
+{
+    "email": "wlasciciel-test-mvp@example.com",
+    "password": "password123",
+    "user_type": "owner",
+    "first_name": "Marek",
+    "last_name": "Właściciel"
+}
+
+###
+
+# Krok 2: Zaloguj się jako WŁAŚCICIEL, aby otrzymać token
+# @name MvpOwnerLogin
+POST http://localhost:3000/api/login
+Content-Type: application/json
+
+{
+    "email": "wlasciciel-test-mvp@example.com",
+    "password": "password123"
+}
+
+###
+
+# Przechwyć token właściciela
+@ownerToken = {{MvpOwnerLogin.response.body.token}}
+
+###
+
+# Krok 3: Dodaj food trucka jako WŁAŚCICIEL
+# ZANOTUJ "truckId" Z ODPOWIEDZI!
+@name MvpAddTruck
+POST http://localhost:3000/api/trucks
+Content-Type: application/json
+Authorization: Bearer {{ownerToken}}
+
+{
+    "truck_name": "Testowe Burgery MVP",
+    "description": "Food truck stworzony na potrzeby testu końcowego.",
+    "cuisine_types": "burgery,amerykańska",
+    "base_postal_code": "00-001",
+    "service_radius_km": 100
+}
+
+
+### --- CZĘŚĆ 2: ORGANIZATOR ---
+
+# Krok 4: Zarejestruj nowego ORGANIZATORA
+@name MvpOrganizerRegister
+POST http://localhost:3000/api/register
+Content-Type: application/json
+
+{
+    "email": "organizator-test-mvp@example.com",
+    "password": "password123",
+    "user_type": "organizer",
+    "first_name": "Ewa",
+    "last_name": "Eventowa"
+}
+
+###
+
+# Krok 5: Zaloguj się jako ORGANIZATOR, aby dostać token
+@name MvpOrganizerLogin
+POST http://localhost:3000/api/login
+Content-Type: application/json
+
+{
+    "email": "organizator-test-mvp@example.com",
+    "password": "password123"
+}
+
+###
+
+# Przechwyć token organizatora
+@organizerToken = {{MvpOrganizerLogin.response.body.token}}
+
+###
+
+### --- CZĘŚĆ 3: REZERWACJA ---
+
+# Krok 6: Złóż rezerwację jako ORGANIZATOR
+# UWAGA: Zmień "truck_id" poniżej na ten, który otrzymałeś w odpowiedzi z Kroku 3!
+POST http://localhost:3000/api/reservations
+Content-Type: application/json
+Authorization: Bearer {{organizerToken}}
+
+{
+    "truck_id": 1,
+    "event_details": "Finałowy test rezerwacji dla MVP.",
+    "event_date": "2025-10-10",
+    "event_address": "Pałac Kultury i Nauki, Warszawa",
+    "event_postal_code": "00-901"
+}

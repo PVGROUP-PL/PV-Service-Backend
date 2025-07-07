@@ -1,0 +1,12 @@
+### Prosty test serwera
+GET http://localhost:3000/api/test
+
+### Rejestracja nowego użytkownika testowego
+POST http://localhost:3000/api/register
+Content-Type: application/json
+
+{
+    "email": "final-test-works@example.com",
+    "password": "password123",
+    "user_type": "organizer"
+}
