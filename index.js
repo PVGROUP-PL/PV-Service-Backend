@@ -4,46 +4,41 @@ require('dotenv').config();
 // Krok 2: Import bibliotek
 const express = require('express');
 const http = require('http');
-const cors = require('cors');
 const { Server } = require("socket.io");
 const path = require('path');
 const fs = require('fs');
 const pool = require('./db');
+const corsMiddleware = require('./middleware/cors'); // <-- NOWY IMPORT
 
-// Krok 3: Import modułów z trasami dla PV-Service
+// Krok 3: Import modułów z trasami
 const authRoutes = require('./routes/authRoutes');
 const installerProfileRoutes = require('./routes/installerProfileRoutes');
 const serviceRequestRoutes = require('./routes/serviceRequestRoutes');
 const reviewRoutes = require('./routes/reviewRoutes');
 const conversationRoutes = require('./routes/conversationRoutes');
 
-// Krok 4: Inicjalizacja i konfiguracja
+// Krok 4: Inicjalizacja aplikacji
 const app = express();
 const server = http.createServer(app);
 
-// --- POPRAWNA I JEDYNA KONFIGURACJA CORS ---
-const FRONTEND_URL = 'https://pv-service-db.web.app';
-const corsOptions = {
-  origin: FRONTEND_URL,
-  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"]
-};
-app.use(cors(corsOptions));
-// --- KONIEC KONFIGURACJI CORS ---
+// Krok 5: Użycie middleware
+app.use(corsMiddleware); // <-- Użycie wydzielonej konfiguracji CORS
+app.use(express.json());
 
 const io = new Server(server, {
-  cors: corsOptions
+  cors: {
+    origin: 'https://pv-service-db.web.app', // Socket.IO wciąż potrzebuje tego bezpośrednio
+    methods: ["GET", "POST"]
+  }
 });
 
-const PORT = process.env.PORT; // Port z Cloud Run
-
-// Krok 5: Główne middleware
-app.use(express.json());
+const PORT = process.env.PORT;
 
 const uploadsDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir);
 app.use('/uploads', express.static(uploadsDir));
 
-// Krok 6: Główne trasy API dla PV-Service
+// Krok 6: Główne trasy API
 app.use('/api/auth', authRoutes);
 app.use('/api/profiles', installerProfileRoutes);
 app.use('/api/requests', serviceRequestRoutes);
@@ -57,23 +52,17 @@ app.get('/', (req, res) => {
 // Krok 7: Logika Socket.IO 
 io.on('connection', (socket) => {
   console.log('✅ Użytkownik połączył się z komunikatorem:', socket.id);
-
   socket.on('join_room', (conversationId) => {
     socket.join(conversationId);
     console.log(`Użytkownik ${socket.id} dołączył do pokoju ${conversationId}`);
   });
-
   socket.on('send_message', async (data) => {
     const { conversation_id, sender_id, message_content } = data;
     try {
-        const newMessage = await pool.query(
-            'INSERT INTO messages (conversation_id, sender_id, message_content) VALUES ($1, $2, $3) RETURNING *', 
-            [conversation_id, sender_id, message_content]
-        );
+        const newMessage = await pool.query( 'INSERT INTO messages (conversation_id, sender_id, message_content) VALUES ($1, $2, $3) RETURNING *', [conversation_id, sender_id, message_content]);
         io.to(conversation_id).emit('receive_message', newMessage.rows[0]);
     } catch (error) { console.error("Błąd zapisu/wysyłki wiadomości:", error); }
   });
-
   socket.on('disconnect', () => { console.log('❌ Użytkownik rozłączył się:', socket.id); });
 });
 
