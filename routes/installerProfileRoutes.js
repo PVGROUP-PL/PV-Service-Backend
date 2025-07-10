@@ -11,10 +11,14 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage: storage });
 
-// ZMIANA: Używamy upload.array() do obsługi wielu plików
-// 'reference_photos' to nazwa pola w formularzu, 10 to maksymalna liczba zdjęć
+// Trasa do tworzenia nowego profilu instalatora
 router.post('/', authenticateToken, upload.array('reference_photos', 10), installerProfileController.createProfile);
+
+// Trasa do pobierania własnego profilu (po zalogowaniu)
 router.get('/my-profile', authenticateToken, installerProfileController.getMyProfile);
+
+// Trasa do pobierania WSZYSTKICH profili (publiczna)
+router.get('/', installerProfileController.getAllProfiles); // <--- DODAJ TĘ LINIĘ
 
 // W przyszłości dodamy tu pozostałe trasy
 // router.get('/:profileId', installerProfileController.getProfileById);
