@@ -1,6 +1,9 @@
 // index.js
+
+// Krok 1: Wczytanie zmiennych środowiskowych
 require('dotenv').config();
 
+// Krok 2: Import bibliotek
 const express = require('express');
 const http = require('http');
 const cors = require('cors');
@@ -9,40 +12,41 @@ const path = require('path');
 const fs = require('fs');
 const pool = require('./db');
 
-// Import wszystkich modułów tras
+// Krok 3: Import modułów z trasami
 const authRoutes = require('./routes/authRoutes');
 const installerProfileRoutes = require('./routes/installerProfileRoutes');
 const serviceRequestRoutes = require('./routes/serviceRequestRoutes');
 const reviewRoutes = require('./routes/reviewRoutes');
 const conversationRoutes = require('./routes/conversationRoutes');
 
-// Inicjalizacja aplikacji
+// Krok 4: Inicjalizacja i konfiguracja
 const app = express();
 const server = http.createServer(app);
-const FRONTEND_URL = 'https://pv-service-db.web.app'; // URL Twojej aplikacji
 
+// --- KONFIGURACJA CORS ---
+const FRONTEND_URL = 'https://pv-service-db.web.app';
 const corsOptions = {
   origin: FRONTEND_URL,
-  methods: ["GET", "POST", "PUT", "DELETE"]
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"]
 };
+// Używamy skonfigurowanego CORS dla całej aplikacji
+app.use(cors(corsOptions));
+// --- KONIEC KONFIGURACJI CORS ---
 
 const io = new Server(server, {
   cors: corsOptions
 });
-// ...
-app.use(cors(corsOptions));
 
 const PORT = process.env.PORT || 3000;
 
-// Middleware
-app.use(cors());
+// Krok 5: Główne middleware
 app.use(express.json());
 
 const uploadsDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir);
 app.use('/uploads', express.static(uploadsDir));
 
-// Główne trasy API
+// Krok 6: Główne trasy API
 app.use('/api/auth', authRoutes);
 app.use('/api/profiles', installerProfileRoutes);
 app.use('/api/requests', serviceRequestRoutes);
@@ -53,7 +57,7 @@ app.get('/', (req, res) => {
   res.send('Backend for PV Service Platform is running!');
 });
 
-// Logika Socket.IO 
+// Krok 7: Logika Socket.IO 
 io.on('connection', (socket) => {
   console.log('✅ Użytkownik połączył się z komunikatorem:', socket.id);
 
@@ -76,10 +80,10 @@ io.on('connection', (socket) => {
   socket.on('disconnect', () => { console.log('❌ Użytkownik rozłączył się:', socket.id); });
 });
 
-// Uruchomienie serwera
+// Krok 8: Uruchomienie serwera
 server.listen(PORT, () => {
     console.log(`🚀 Serwer (z komunikatorem) uruchomiony na porcie ${PORT} i gotowy na przyjmowanie zapytań!`);
 });
 
-// Eksport serwera na potrzeby testów
+// Krok 9: Eksport serwera na potrzeby testów
 module.exports = server;
