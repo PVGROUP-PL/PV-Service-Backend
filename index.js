@@ -19,9 +19,18 @@ const conversationRoutes = require('./routes/conversationRoutes');
 // Inicjalizacja aplikacji
 const app = express();
 const server = http.createServer(app);
+const FRONTEND_URL = 'https://pv-service-db.web.app'; // URL Twojej aplikacji
+
+const corsOptions = {
+  origin: FRONTEND_URL,
+  methods: ["GET", "POST", "PUT", "DELETE"]
+};
+
 const io = new Server(server, {
-  cors: { origin: "*", methods: ["GET", "POST"] }
+  cors: corsOptions
 });
+// ...
+app.use(cors(corsOptions));
 
 const PORT = process.env.PORT || 3000;
 
