@@ -34,7 +34,7 @@ const io = new Server(server, {
   cors: corsOptions
 });
 
-const PORT = process.env.PORT; // Usunięty fallback, aby używać portu z Cloud Run
+const PORT = process.env.PORT; // Port z Cloud Run
 
 // Krok 5: Główne middleware
 app.use(express.json());
