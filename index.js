@@ -1,5 +1,3 @@
-// index.js
-
 // Krok 1: Wczytanie zmiennych środowiskowych
 require('dotenv').config();
 
@@ -12,7 +10,7 @@ const path = require('path');
 const fs = require('fs');
 const pool = require('./db');
 
-// Krok 3: Import modułów z trasami
+// Krok 3: Import modułów z trasami dla PV-Service
 const authRoutes = require('./routes/authRoutes');
 const installerProfileRoutes = require('./routes/installerProfileRoutes');
 const serviceRequestRoutes = require('./routes/serviceRequestRoutes');
@@ -23,13 +21,12 @@ const conversationRoutes = require('./routes/conversationRoutes');
 const app = express();
 const server = http.createServer(app);
 
-// --- KONFIGURACJA CORS ---
+// --- POPRAWNA I JEDYNA KONFIGURACJA CORS ---
 const FRONTEND_URL = 'https://pv-service-db.web.app';
 const corsOptions = {
   origin: FRONTEND_URL,
   methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"]
 };
-// Używamy skonfigurowanego CORS dla całej aplikacji
 app.use(cors(corsOptions));
 // --- KONIEC KONFIGURACJI CORS ---
 
@@ -37,7 +34,7 @@ const io = new Server(server, {
   cors: corsOptions
 });
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT; // Usunięty fallback, aby używać portu z Cloud Run
 
 // Krok 5: Główne middleware
 app.use(express.json());
@@ -46,7 +43,7 @@ const uploadsDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir);
 app.use('/uploads', express.static(uploadsDir));
 
-// Krok 6: Główne trasy API
+// Krok 6: Główne trasy API dla PV-Service
 app.use('/api/auth', authRoutes);
 app.use('/api/profiles', installerProfileRoutes);
 app.use('/api/requests', serviceRequestRoutes);
