@@ -10,4 +10,4 @@ const corsOptions = {
   allowedHeaders: ["Content-Type", "Authorization"] // Upewnij się, że autoryzacja jest dozwolona
 };
 
-module.exports = cors(corsOptions);
+module.exports = cors(corsOptions); 
