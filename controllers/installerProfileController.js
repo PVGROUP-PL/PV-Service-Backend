@@ -4,26 +4,26 @@ const axios = require('axios');
 
 // --- FUNKCJA POMOCNICZA GEOCODE ---
 async function geocode(postalCode) {
-    const apiKey = process.env.GEOCODING_API_KEY;
-    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(postalCode)}&components=country:PL&key=${apiKey}`;
-    try {
-        const response = await axios.get(url);
-        if (response.data.status === 'OK' && response.data.results.length > 0) {
-            const location = response.data.results[0].geometry.location;
-            return { lat: location.lat, lon: location.lng };
-        } else {
-            throw new Error(`Nie udało się znaleźć współrzędnych dla kodu pocztowego: ${postalCode}.`);
-        }
-    } catch (error) {
-        console.error('Błąd Geocoding API:', error.message);
-        throw error; 
+  const apiKey = process.env.GEOCODING_API_KEY;
+  const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(postalCode)}&components=country:PL&key=${apiKey}`;
+  try {
+    const response = await axios.get(url);
+    if (response.data.status === 'OK' && response.data.results.length > 0) {
+      const location = response.data.results[0].geometry.location;
+      return { lat: location.lat, lon: location.lng };
+    } else {
+      throw new Error(`Nie udało się znaleźć współrzędnych dla kodu pocztowego: ${postalCode}.`);
     }
+  } catch (error) {
+    console.error('Błąd Geocoding API:', error.message);
+    throw error; 
+  }
 }
 
 // --- KONTROLERY DLA PROFILI INSTALATORÓW ---
 
+// Tworzenie nowego profilu instalatora
 exports.createProfile = async (req, res) => {
-    // Zmieniamy na 'let', aby móc modyfikować zmienne
     let { 
         service_name, service_description, specializations, 
         base_postal_code, service_radius_km, serviced_inverter_brands,
@@ -34,19 +34,15 @@ exports.createProfile = async (req, res) => {
     const reference_photo_urls = req.files ? req.files.map(file => `/uploads/${file.filename}`) : [];
 
     try {
-        // --- NOWA LOGIKA PARSOWANIA ---
-        // Jeśli dane przyszły jako tekst JSON z FormData, zamieniamy je z powrotem na tablice
         if (serviced_inverter_brands && typeof serviced_inverter_brands === 'string') {
             serviced_inverter_brands = JSON.parse(serviced_inverter_brands);
         }
         if (service_types && typeof service_types === 'string') {
             service_types = JSON.parse(service_types);
         }
-        // Zakładamy, że specializations również może być tablicą
         if (specializations && typeof specializations === 'string') {
             specializations = JSON.parse(specializations);
         }
-        // --- KONIEC NOWEJ LOGIKI ---
 
         const { lat, lon } = await geocode(base_postal_code); 
         
@@ -71,7 +67,7 @@ exports.createProfile = async (req, res) => {
     }
 };
 
-// ... reszta funkcji (getMyProfile, getAllProfiles) pozostaje bez zmian ...
+// Pobieranie profilu zalogowanego instalatora
 exports.getMyProfile = async (req, res) => {
     try {
         const profile = await pool.query('SELECT * FROM installer_profiles WHERE installer_id = $1', [req.user.userId]);
@@ -86,6 +82,7 @@ exports.getMyProfile = async (req, res) => {
     }
 };
 
+// Pobieranie wszystkich profili instalatorów
 exports.getAllProfiles = async (req, res) => {
     try {
         const profiles = await pool.query('SELECT * FROM installer_profiles');
@@ -94,4 +91,21 @@ exports.getAllProfiles = async (req, res) => {
         console.error('Błąd podczas pobierania wszystkich profili:', error);
         res.status(500).json({ message: 'Błąd serwera.' });
     }
+};
+
+// Pobieranie jednego, konkretnego profilu instalatora po jego ID
+exports.getProfileById = async (req, res) => {
+  try {
+    const { profileId } = req.params; // Pobieramy ID z adresu URL
+    const profile = await pool.query('SELECT * FROM installer_profiles WHERE profile_id = $1', [profileId]);
+
+    if (profile.rows.length > 0) {
+      res.json(profile.rows[0]);
+    } else {
+      res.status(404).json({ message: 'Nie znaleziono profilu o podanym ID.' });
+    }
+  } catch (error) {
+    console.error("Błąd podczas pobierania pojedynczego profilu:", error);
+    res.status(500).json({ message: 'Błąd serwera.' });
+  }
 };
