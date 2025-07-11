@@ -4,9 +4,10 @@ const router = express.Router();
 const reviewController = require('../controllers/reviewController');
 const authenticateToken = require('../middleware/authenticateToken');
 
+// Trasa do tworzenia nowej opinii (dla zalogowanych klientów)
 router.post('/', authenticateToken, reviewController.createReview);
 
-// Upewnij się, że nazwa tej funkcji jest poprawna
+// Trasa do pobierania opinii dla konkretnego profilu instalatora (publiczna)
 router.get('/profile/:profileId', reviewController.getReviewsForProfile);
 
 module.exports = router;
