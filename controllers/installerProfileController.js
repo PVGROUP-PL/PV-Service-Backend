@@ -1,35 +1,30 @@
 // controllers/installerProfileController.js
 const pool = require('../db');
-const axios = require('axios'); // Upewnij się, że masz zainstalowany axios (npm install axios)
+const axios = require('axios');
 
 // --- FUNKCJA POMOCNICZA GEOCODE ---
 async function geocode(postalCode) {
-  const apiKey = process.env.GEOCODING_API_KEY;
-  // Budujemy URL do zapytania do Google Maps API, dodając kraj dla precyzji
-  const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(postalCode)}&components=country:PL&key=${apiKey}`;
-
-  try {
-    const response = await axios.get(url);
-    if (response.data.status === 'OK' && response.data.results.length > 0) {
-      const location = response.data.results[0].geometry.location;
-      return { lat: location.lat, lon: location.lng };
-    } else {
-      // Jeśli Google nie znajdzie kodu, rzucamy błąd
-      throw new Error(`Nie udało się znaleźć współrzędnych dla kodu pocztowego: ${postalCode}. Status API: ${response.data.status}`);
+    const apiKey = process.env.GEOCODING_API_KEY;
+    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(postalCode)}&components=country:PL&key=${apiKey}`;
+    try {
+        const response = await axios.get(url);
+        if (response.data.status === 'OK' && response.data.results.length > 0) {
+            const location = response.data.results[0].geometry.location;
+            return { lat: location.lat, lon: location.lng };
+        } else {
+            throw new Error(`Nie udało się znaleźć współrzędnych dla kodu pocztowego: ${postalCode}.`);
+        }
+    } catch (error) {
+        console.error('Błąd Geocoding API:', error.message);
+        throw error; 
     }
-  } catch (error) {
-    console.error('Błąd Geocoding API:', error.message);
-    // Przekazujemy błąd dalej, aby główna funkcja mogła go obsłużyć
-    throw error; 
-  }
 }
-
 
 // --- KONTROLERY DLA PROFILI INSTALATORÓW ---
 
-// Tworzenie nowego profilu instalatora
 exports.createProfile = async (req, res) => {
-    const { 
+    // Zmieniamy na 'let', aby móc modyfikować zmienne
+    let { 
         service_name, service_description, specializations, 
         base_postal_code, service_radius_km, serviced_inverter_brands,
         service_types, experience_years, certifications, website_url 
@@ -39,7 +34,20 @@ exports.createProfile = async (req, res) => {
     const reference_photo_urls = req.files ? req.files.map(file => `/uploads/${file.filename}`) : [];
 
     try {
-        // Używamy naszej nowej funkcji geocode
+        // --- NOWA LOGIKA PARSOWANIA ---
+        // Jeśli dane przyszły jako tekst JSON z FormData, zamieniamy je z powrotem na tablice
+        if (serviced_inverter_brands && typeof serviced_inverter_brands === 'string') {
+            serviced_inverter_brands = JSON.parse(serviced_inverter_brands);
+        }
+        if (service_types && typeof service_types === 'string') {
+            service_types = JSON.parse(service_types);
+        }
+        // Zakładamy, że specializations również może być tablicą
+        if (specializations && typeof specializations === 'string') {
+            specializations = JSON.parse(specializations);
+        }
+        // --- KONIEC NOWEJ LOGIKI ---
+
         const { lat, lon } = await geocode(base_postal_code); 
         
         const newProfile = await pool.query(
@@ -50,20 +58,10 @@ exports.createProfile = async (req, res) => {
                 experience_years, certifications, reference_photo_urls
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING *`,
             [
-                installerId,                  // $1
-                service_name,                 // $2
-                service_description,          // $3
-                specializations,              // $4
-                base_postal_code,             // $5
-                service_radius_km,            // $6
-                lat,                          // $7
-                lon,                          // $8
-                website_url,                  // $9
-                serviced_inverter_brands,     // $10
-                service_types,                // $11
-                experience_years,             // $12
-                certifications,               // $13
-                reference_photo_urls          // $14
+                installerId, service_name, service_description, specializations, 
+                base_postal_code, service_radius_km, lat, lon,
+                website_url, serviced_inverter_brands, service_types, 
+                experience_years, certifications, reference_photo_urls
             ]
         );
         res.status(201).json(newProfile.rows[0]);
@@ -73,7 +71,7 @@ exports.createProfile = async (req, res) => {
     }
 };
 
-// Pobieranie profilu zalogowanego instalatora
+// ... reszta funkcji (getMyProfile, getAllProfiles) pozostaje bez zmian ...
 exports.getMyProfile = async (req, res) => {
     try {
         const profile = await pool.query('SELECT * FROM installer_profiles WHERE installer_id = $1', [req.user.userId]);
@@ -88,7 +86,6 @@ exports.getMyProfile = async (req, res) => {
     }
 };
 
-// Pobieranie wszystkich profili instalatorów
 exports.getAllProfiles = async (req, res) => {
     try {
         const profiles = await pool.query('SELECT * FROM installer_profiles');
