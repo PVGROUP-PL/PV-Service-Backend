@@ -4,7 +4,9 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 
+// --- REJESTRACJA UŻYTKOWNIKA ---
 exports.register = async (req, res) => {
+    // ... ta funkcja pozostaje bez zmian ...
     const { email, password, user_type, first_name, last_name, company_name, nip, phone_number, country_code } = req.body;
     if (!email || !password || !user_type || !country_code) {
         return res.status(400).json({ message: 'Wszystkie pola są wymagane.' });
@@ -17,7 +19,6 @@ exports.register = async (req, res) => {
             return res.status(409).json({ message: 'Użytkownik o tym adresie email już istnieje.' });
         }
         let stripeCustomerId = null;
-        // ZMIANA: Sprawdzamy czy typ użytkownika to 'installer'
         if (user_type === 'installer') {
             const customer = await stripe.customers.create({
                 email: email, name: `${first_name} ${last_name}`, phone: phone_number,
@@ -40,6 +41,59 @@ exports.register = async (req, res) => {
     }
 };
 
-// Reszta pliku (exports.login, exports.getProfile) pozostaje bez zmian...
-exports.login = async (req, res) => { /* ... ten kod zostaje taki sam ... */ };
-exports.getProfile = async (req, res) => { /* ... ten kod zostaje taki sam ... */ };
+// --- LOGOWANIE UŻYTKOWNIKA (Z POPRAWIONĄ OBSŁUGĄ POŁĄCZENIA) ---
+exports.login = async (req, res) => {
+    const { email, password } = req.body;
+    const client = await pool.connect(); // <-- JAWNE POBRANIE POŁĄCZENIA
+    try {
+        const userResult = await client.query('SELECT * FROM users WHERE email = $1', [email]);
+        if (userResult.rows.length === 0) {
+            return res.status(401).json({ message: 'Nieprawidłowy email lub hasło.' });
+        }
+
+        const user = userResult.rows[0];
+        const isMatch = await bcrypt.compare(password, user.password_hash);
+
+        if (!isMatch) {
+            return res.status(401).json({ message: 'Nieprawidłowy email lub hasło.' });
+        }
+
+        const payload = {
+            userId: user.user_id,
+            email: user.email,
+            user_type: user.user_type
+        };
+
+        const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '7d' });
+
+        res.json({
+            token,
+            userId: user.user_id,
+            email: user.email,
+            user_type: user.user_type
+        });
+
+    } catch (error) {
+        console.error('Błąd podczas logowania:', error);
+        res.status(500).json({ message: 'Błąd serwera.' });
+    } finally {
+        client.release(); // <-- JAWNE ZWOLNIENIE POŁĄCZENIA
+    }
+};
+
+// --- POBIERANIE PROFILU ZALOGOWANEGO UŻYTKOWNIKA ---
+exports.getProfile = async (req, res) => {
+    // ... ta funkcja pozostaje bez zmian ...
+    try {
+        const userResult = await pool.query('SELECT user_id, email, user_type, first_name, last_name FROM users WHERE user_id = $1', [req.user.userId]);
+
+        if (userResult.rows.length > 0) {
+            res.json(userResult.rows[0]);
+        } else {
+            res.status(404).json({ message: 'Nie znaleziono użytkownika.' });
+        }
+    } catch (error) {
+        console.error('Błąd podczas pobierania profilu:', error);
+        res.status(500).json({ message: 'Błąd serwera.' });
+    }
+};
