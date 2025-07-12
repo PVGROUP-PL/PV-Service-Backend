@@ -14,7 +14,7 @@ const uploadFileToGCS = (file) => {
       resumable: false,
     });
 
-    blobStream.on('finish', () => { // Usunęliśmy async i makePublic()
+    blobStream.on('finish', () => { // Usunięto async
       const publicUrl = `https://storage.googleapis.com/${bucket.name}/${blob.name}`;
       resolve(publicUrl);
     })
