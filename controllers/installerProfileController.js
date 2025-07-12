@@ -112,65 +112,46 @@ exports.getMyProfile = async (req, res) => {
 exports.getAllProfiles = async (req, res) => {
     const { specialization, postal_code } = req.query;
 
-    // Podstawowa część zapytania
     let query = `
         SELECT 
             p.*, 
             COALESCE(AVG(r.rating), 0) as average_rating, 
             COUNT(r.review_id) as review_count
-            -- Dynamicznie dodamy obliczanie dystansu, jeśli będzie potrzebne
     `;
-
-    // Lista parametrów dla zapytania SQL
     const values = [];
-    let fromClause = `
-        FROM 
-            installer_profiles p
-        LEFT JOIN 
-            reviews r ON p.profile_id = r.profile_id
-    `;
+    let fromClause = ` FROM installer_profiles p LEFT JOIN reviews r ON p.profile_id = r.profile_id`;
     const whereClauses = [];
 
-    // Jeśli podano kod pocztowy, przygotowujemy filtrowanie po dystansie
     if (postal_code) {
         try {
-            // Zamieniamy kod pocztowy klienta na współrzędne
             const { lat, lon } = await geocode(postal_code);
-            
-            // Dodajemy obliczanie dystansu do zapytania SELECT
-            query += `, calculate_distance(p.base_latitude, p.base_longitude, $${values.length + 1}, $${values.length + 2}) as distance `;
+            query += `, calculate_distance(p.base_latitude, p.base_longitude, $${values.length + 1}, $${values.length + 2}) as distance`;
             values.push(lat, lon);
-            
-            // Dodajemy warunek filtrowania, który porównuje obliczony dystans z zasięgiem instalatora
-            whereClauses.push(`calculate_distance(p.base_latitude, p.base_longitude, $${values.length - 1}, $${values.length}) <= p.service_radius_km`);
+            whereClauses.push(`calculate_distance(p.base_latitude, p.base_longitude, $1, $2) <= p.service_radius_km`);
         } catch (error) {
-            console.error(error.message);
-            // Jeśli geokodowanie się nie uda, możemy zwrócić błąd lub pustą listę
             return res.status(400).json({ message: "Nieprawidłowy kod pocztowy." });
         }
     }
 
-    // Dodajemy filtrowanie po specjalizacji, jeśli została podana
+    // ZMIANA JEST TUTAJ: Szukamy w kolumnie p.service_types
     if (specialization) {
         values.push(specialization);
-        whereClauses.push(`$${values.length} = ANY(p.specializations)`);
+        whereClauses.push(`$${values.length} = ANY(p.service_types)`);
     }
 
-    // Łączymy wszystko w jedno zapytanie
     query += fromClause;
     if (whereClauses.length > 0) {
         query += ' WHERE ' + whereClauses.join(' AND ');
     }
     query += ' GROUP BY p.profile_id';
     
-    // Jeśli filtrowaliśmy po dystansie, sortujemy wyniki od najbliższego
     if (postal_code) {
         query += ' ORDER BY distance ASC';
     }
 
     try {
-        const profiles = await pool.query(query, values);
-        res.json(profiles.rows);
+        const profilesResult = await pool.query(query, values);
+        res.json(profilesResult.rows);
     } catch (error) {
         console.error('Błąd podczas pobierania wszystkich profili:', error);
         res.status(500).json({ message: 'Błąd serwera.' });
