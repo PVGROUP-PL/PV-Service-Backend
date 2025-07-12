@@ -5,31 +5,22 @@ const installerProfileController = require('../controllers/installerProfileContr
 const authenticateToken = require('../middleware/authenticateToken');
 const multer = require('multer');
 
-const storage = multer.diskStorage({
-    destination: (req, file, cb) => cb(null, 'uploads/'),
-    filename: (req, file, cb) => cb(null, Date.now() + '-' + file.originalname.replace(/\s/g, '_'))
+// ZMIANA: Używamy memoryStorage zamiast diskStorage
+const storage = multer.memoryStorage();
+const upload = multer({ 
+    storage: storage,
+    limits: { fileSize: 10 * 1024 * 1024 } // Limit 10MB na plik
 });
-const upload = multer({ storage: storage });
-
 
 // === Trasy POST (tworzenie) ===
 router.post('/', authenticateToken, upload.array('reference_photos', 10), installerProfileController.createProfile);
 
-
-// === Trasy GET (pobieranie) - kolejność ma znaczenie! ===
-
-// 1. Najpierw najbardziej szczegółowa trasa GET
+// === Trasy GET (pobieranie) ===
 router.get('/my-profile', authenticateToken, installerProfileController.getMyProfile);
-
-// 2. Następnie trasa dla wszystkich profili (publiczna)
 router.get('/', installerProfileController.getAllProfiles); 
-
-// 3. Na samym końcu trasy z parametrem (wildcard), ponieważ pasują do wielu rzeczy
 router.get('/:profileId', installerProfileController.getProfileById);
-
 
 // === Trasy PUT (aktualizacja) ===
 router.put('/:profileId', authenticateToken, upload.array('reference_photos', 10), installerProfileController.updateProfile);
-
 
 module.exports = router;
