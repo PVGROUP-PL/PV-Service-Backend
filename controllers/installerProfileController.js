@@ -2,15 +2,28 @@ const pool = require('../db');
 const axios = require('axios');
 const { Storage } = require('@google-cloud/storage');
 
+// --- KONFIGURACJA GOOGLE CLOUD STORAGE ---
 const storage = new Storage();
 const bucketName = process.env.GCS_BUCKET_NAME;
 const bucket = storage.bucket(bucketName);
 
+
+// --- FUNKCJE POMOCNICZE ---
+
+/**
+ * Wysyła plik do Google Cloud Storage i czyni go publicznym.
+ * @param {object} file - Obiekt pliku z req.files.
+ * @returns {Promise<string>} Publiczny URL do wgranego pliku.
+ */
 const uploadFileToGCS = (file) => {
   return new Promise((resolve, reject) => {
     const { originalname, buffer } = file;
     const blob = bucket.file(Date.now() + "_" + originalname.replace(/ /g, "_"));
-    const blobStream = blob.createWriteStream({ resumable: false });
+    
+    const blobStream = blob.createWriteStream({
+      resumable: false,
+    });
+
     blobStream.on('finish', async () => {
       try {
         await blob.makePublic();
@@ -19,26 +32,37 @@ const uploadFileToGCS = (file) => {
       } catch (err) {
         reject(`Nie udało się upublicznić pliku: ${err}`);
       }
-    }).on('error', (err) => reject(`Nie udało się wysłać obrazka: ${err}`)).end(buffer);
+    })
+    .on('error', (err) => {
+      reject(`Nie udało się wysłać obrazka: ${err}`);
+    })
+    .end(buffer);
   });
 };
 
+/**
+ * Konwertuje kod pocztowy na współrzędne geograficzne.
+ * @param {string} postalCode - Kod pocztowy do geokodowania.
+ * @returns {Promise<{lat: number, lon: number}>} Obiekt ze współrzędnymi.
+ */
 async function geocode(postalCode) {
-    const apiKey = process.env.GEOCODING_API_KEY;
-    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(postalCode)}&components=country:PL&key=${apiKey}`;
-    try {
-        const response = await axios.get(url);
-        if (response.data.status === 'OK' && response.data.results.length > 0) {
-            const location = response.data.results[0].geometry.location;
-            return { lat: location.lat, lon: location.lng };
-        } else {
-            throw new Error(`Nie udało się znaleźć współrzędnych dla kodu pocztowego: ${postalCode}.`);
-        }
-    } catch (error) {
-        console.error('Błąd Geocoding API:', error.message);
-        throw error;
+  const apiKey = process.env.GEOCODING_API_KEY;
+  const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(postalCode)}&components=country:PL&key=${apiKey}`;
+  try {
+    const response = await axios.get(url);
+    if (response.data.status === 'OK' && response.data.results.length > 0) {
+      const location = response.data.results[0].geometry.location;
+      return { lat: location.lat, lon: location.lng };
+    } else {
+      throw new Error(`Nie udało się znaleźć współrzędnych dla kodu pocztowego: ${postalCode}.`);
     }
+  } catch (error) {
+    console.error('Błąd Geocoding API:', error.message);
+    throw error; 
+  }
 }
+
+// --- KONTROLERY DLA PROFILI INSTALATORÓW ---
 
 exports.createProfile = async (req, res) => {
     let { 
@@ -81,6 +105,48 @@ exports.createProfile = async (req, res) => {
         console.error('Błąd dodawania profilu instalatora:', error.message);
         res.status(500).json({ message: 'Błąd serwera lub nieprawidłowy kod pocztowy.' });
     }
+};
+
+exports.getMyProfile = async (req, res) => {
+    try {
+        const profile = await pool.query('SELECT * FROM installer_profiles WHERE installer_id = $1', [req.user.userId]);
+        if (profile.rows.length > 0) {
+            res.json(profile.rows[0]);
+        } else {
+            res.status(404).json({ message: 'Nie znaleziono profilu dla tego instalatora.' });
+        }
+    } catch (error) {
+        console.error("Błąd w /api/profiles/my-profile:", error);
+        res.status(500).json({ message: 'Błąd serwera.' });
+    }
+};
+
+exports.getAllProfiles = async (req, res) => {
+    try {
+        const profiles = await pool.query('SELECT * FROM installer_profiles');
+        res.json(profiles.rows);
+    } catch (error) {
+        console.error('Błąd podczas pobierania wszystkich profili:', error);
+        res.status(500).json({ message: 'Błąd serwera.' });
+    }
+};
+
+exports.getProfileById = async (req, res) => {
+  try {
+    const profileId = parseInt(req.params.profileId, 10);
+    if (isNaN(profileId)) {
+      return res.status(400).json({ message: 'Nieprawidłowe ID profilu.' });
+    }
+    const profile = await pool.query('SELECT * FROM installer_profiles WHERE profile_id = $1', [profileId]);
+    if (profile.rows.length > 0) {
+      res.json(profile.rows[0]);
+    } else {
+      res.status(404).json({ message: 'Nie znaleziono profilu o podanym ID.' });
+    }
+  } catch (error) {
+    console.error("Błąd podczas pobierania pojedynczego profilu:", error);
+    res.status(500).json({ message: 'Błąd serwera.' });
+  }
 };
 
 exports.updateProfile = async (req, res) => {
@@ -138,46 +204,4 @@ exports.updateProfile = async (req, res) => {
         console.error("Błąd podczas aktualizacji profilu:", error);
         res.status(500).json({ message: 'Błąd serwera lub nieprawidłowy kod pocztowy.' });
     }
-};
-
-exports.getMyProfile = async (req, res) => {
-    try {
-        const profile = await pool.query('SELECT * FROM installer_profiles WHERE installer_id = $1', [req.user.userId]);
-        if (profile.rows.length > 0) {
-            res.json(profile.rows[0]);
-        } else {
-            res.status(404).json({ message: 'Nie znaleziono profilu dla tego instalatora.' });
-        }
-    } catch (error) {
-        console.error("Błąd w /api/profiles/my-profile:", error);
-        res.status(500).json({ message: 'Błąd serwera.' });
-    }
-};
-
-exports.getAllProfiles = async (req, res) => {
-    try {
-        const profiles = await pool.query('SELECT * FROM installer_profiles');
-        res.json(profiles.rows);
-    } catch (error) {
-        console.error('Błąd podczas pobierania wszystkich profili:', error);
-        res.status(500).json({ message: 'Błąd serwera.' });
-    }
-};
-
-exports.getProfileById = async (req, res) => {
-  try {
-    const profileId = parseInt(req.params.profileId, 10);
-    if (isNaN(profileId)) {
-      return res.status(400).json({ message: 'Nieprawidłowe ID profilu.' });
-    }
-    const profile = await pool.query('SELECT * FROM installer_profiles WHERE profile_id = $1', [profileId]);
-    if (profile.rows.length > 0) {
-      res.json(profile.rows[0]);
-    } else {
-      res.status(404).json({ message: 'Nie znaleziono profilu o podanym ID.' });
-    }
-  } catch (error) {
-    console.error("Błąd podczas pobierania pojedynczego profilu:", error);
-    res.status(500).json({ message: 'Błąd serwera.' });
-  }
 };
