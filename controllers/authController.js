@@ -18,15 +18,18 @@ exports.register = async (req, res) => {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
+
         const existingUser = await client.query('SELECT * FROM users WHERE email = $1', [email]);
         if (existingUser.rows.length > 0) {
             return res.status(409).json({ message: 'Użytkownik o tym adresie email już istnieje.' });
         }
 
         let stripeCustomerId = null;
-        if (user_type === 'installer') {
+        if (user_type === 'installer' && process.env.STRIPE_SECRET_KEY) {
             const customer = await stripe.customers.create({
-                email: email, name: `${first_name} ${last_name}`, phone: phone_number,
+                email: email, 
+                name: `${first_name} ${last_name}`, 
+                phone: phone_number,
                 metadata: { company_name: company_name, nip: nip }
             });
             stripeCustomerId = customer.id;
@@ -102,10 +105,9 @@ exports.login = async (req, res) => {
     }
 };
 
-// --- POBIERANIE PROFILU ZALOGOWANEGO UŻYTKOWNIKA (Z PEŁNYMI DANYMI) ---
+// --- POBIERANIE PROFILU ZALOGOWANEGO UŻYTKOWNIKA ---
 exports.getProfile = async (req, res) => {
     try {
-        // req.user jest dodawany przez middleware authenticateToken
         const query = `
             SELECT user_id, email, user_type, first_name, last_name, 
                    company_name, nip, phone_number, base_postal_code, service_radius_km 
