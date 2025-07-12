@@ -96,7 +96,12 @@ exports.getAllProfiles = async (req, res) => {
 // Pobieranie jednego, konkretnego profilu instalatora po jego ID
 exports.getProfileById = async (req, res) => {
   try {
-    const { profileId } = req.params; // Pobieramy ID z adresu URL
+    const profileId = parseInt(req.params.profileId, 10);
+
+    if (isNaN(profileId)) {
+      return res.status(400).json({ message: 'Nieprawidłowe ID profilu.' });
+    }
+
     const profile = await pool.query('SELECT * FROM installer_profiles WHERE profile_id = $1', [profileId]);
 
     if (profile.rows.length > 0) {
@@ -108,4 +113,55 @@ exports.getProfileById = async (req, res) => {
     console.error("Błąd podczas pobierania pojedynczego profilu:", error);
     res.status(500).json({ message: 'Błąd serwera.' });
   }
+};
+
+// Aktualizacja profilu instalatora
+exports.updateProfile = async (req, res) => {
+    const { profileId: profileIdParam } = req.params;
+    let { 
+        service_name, service_description, specializations, 
+        base_postal_code, service_radius_km, serviced_inverter_brands,
+        service_types, experience_years, certifications, website_url 
+    } = req.body;
+
+    const profileId = parseInt(profileIdParam, 10);
+    if (isNaN(profileId)) {
+        return res.status(400).json({ message: 'Nieprawidłowe ID profilu.' });
+    }
+
+    try {
+        const profileCheck = await pool.query('SELECT installer_id FROM installer_profiles WHERE profile_id = $1', [profileId]);
+        if (profileCheck.rows.length === 0) {
+            return res.status(404).json({ message: 'Profil nie istnieje.' });
+        }
+        if (profileCheck.rows[0].installer_id !== req.user.userId) {
+            return res.status(403).json({ message: 'Nie masz uprawnień do edycji tego profilu.' });
+        }
+        
+        if (serviced_inverter_brands && typeof serviced_inverter_brands === 'string') serviced_inverter_brands = JSON.parse(serviced_inverter_brands);
+        if (service_types && typeof service_types === 'string') service_types = JSON.parse(service_types);
+        if (specializations && typeof specializations === 'string') specializations = JSON.parse(specializations);
+
+        const { lat, lon } = await geocode(base_postal_code);
+
+        const updatedProfile = await pool.query(
+            `UPDATE installer_profiles SET 
+                service_name = $1, service_description = $2, specializations = $3, 
+                base_postal_code = $4, service_radius_km = $5, base_latitude = $6, 
+                base_longitude = $7, website_url = $8, serviced_inverter_brands = $9, 
+                service_types = $10, experience_years = $11, certifications = $12
+             WHERE profile_id = $13 RETURNING *`,
+            [
+                service_name, service_description, specializations,
+                base_postal_code, service_radius_km, lat, lon, website_url,
+                serviced_inverter_brands, service_types, experience_years,
+                certifications, profileId
+            ]
+        );
+
+        res.json(updatedProfile.rows[0]);
+    } catch (error) {
+        console.error("Błąd podczas aktualizacji profilu:", error);
+        res.status(500).json({ message: 'Błąd serwera lub nieprawidłowy kod pocztowy.' });
+    }
 };
