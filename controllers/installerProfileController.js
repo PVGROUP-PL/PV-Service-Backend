@@ -1,8 +1,46 @@
 // controllers/installerProfileController.js
 const pool = require('../db');
 const axios = require('axios');
+const { Storage } = require('@google-cloud/storage');
 
-// --- FUNKCJA POMOCNICZA GEOCODE ---
+// --- KONFIGURACJA GOOGLE CLOUD STORAGE ---
+const storage = new Storage();
+const bucketName = process.env.GCS_BUCKET_NAME; // Upewnij się, że ta zmienna jest ustawiona w Cloud Run
+const bucket = storage.bucket(bucketName);
+
+
+// --- FUNKCJE POMOCNICZE ---
+
+/**
+ * Wysyła plik do Google Cloud Storage.
+ * @param {object} file - Obiekt pliku z req.files.
+ * @returns {Promise<string>} Publiczny URL do wgranego pliku.
+ */
+const uploadFileToGCS = (file) => {
+  return new Promise((resolve, reject) => {
+    const { originalname, buffer } = file;
+    const blob = bucket.file(Date.now() + "_" + originalname.replace(/ /g, "_"));
+    
+    const blobStream = blob.createWriteStream({
+      resumable: false,
+    });
+
+    blobStream.on('finish', () => {
+      const publicUrl = `https://storage.googleapis.com/${bucket.name}/${blob.name}`;
+      resolve(publicUrl);
+    })
+    .on('error', (err) => {
+      reject(`Nie udało się wysłać obrazka: ${err}`);
+    })
+    .end(buffer);
+  });
+};
+
+/**
+ * Konwertuje kod pocztowy na współrzędne geograficzne.
+ * @param {string} postalCode - Kod pocztowy do geokodowania.
+ * @returns {Promise<{lat: number, lon: number}>} Obiekt ze współrzędnymi.
+ */
 async function geocode(postalCode) {
   const apiKey = process.env.GEOCODING_API_KEY;
   const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(postalCode)}&components=country:PL&key=${apiKey}`;
@@ -31,18 +69,17 @@ exports.createProfile = async (req, res) => {
     } = req.body;
     
     const installerId = req.user.userId;
-    const reference_photo_urls = req.files ? req.files.map(file => `/uploads/${file.filename}`) : [];
 
     try {
-        if (serviced_inverter_brands && typeof serviced_inverter_brands === 'string') {
-            serviced_inverter_brands = JSON.parse(serviced_inverter_brands);
+        let photoUrls = [];
+        if (req.files && req.files.length > 0) {
+          const uploadPromises = req.files.map(uploadFileToGCS);
+          photoUrls = await Promise.all(uploadPromises);
         }
-        if (service_types && typeof service_types === 'string') {
-            service_types = JSON.parse(service_types);
-        }
-        if (specializations && typeof specializations === 'string') {
-            specializations = JSON.parse(specializations);
-        }
+
+        if (serviced_inverter_brands && typeof serviced_inverter_brands === 'string') serviced_inverter_brands = JSON.parse(serviced_inverter_brands);
+        if (service_types && typeof service_types === 'string') service_types = JSON.parse(service_types);
+        if (specializations && typeof specializations === 'string') specializations = JSON.parse(specializations);
 
         const { lat, lon } = await geocode(base_postal_code); 
         
@@ -57,7 +94,7 @@ exports.createProfile = async (req, res) => {
                 installerId, service_name, service_description, specializations, 
                 base_postal_code, service_radius_km, lat, lon,
                 website_url, serviced_inverter_brands, service_types, 
-                experience_years, certifications, reference_photo_urls
+                experience_years, certifications, photoUrls
             ]
         );
         res.status(201).json(newProfile.rows[0]);
@@ -93,21 +130,14 @@ exports.getAllProfiles = async (req, res) => {
     }
 };
 
-// Pobieranie jednego, konkretnego profilu instalatora po jego ID (z logowaniem)
+// Pobieranie jednego, konkretnego profilu instalatora po jego ID
 exports.getProfileById = async (req, res) => {
   try {
-    console.log(`--- DEBUG: Otrzymano żądanie dla profileId: '${req.params.profileId}' (typ: ${typeof req.params.profileId}) ---`);
-
     const profileId = parseInt(req.params.profileId, 10);
-    console.log(`--- DEBUG: Po konwersji parseInt, profileId to: ${profileId} (typ: ${typeof profileId}) ---`);
-    
     if (isNaN(profileId)) {
       return res.status(400).json({ message: 'Nieprawidłowe ID profilu.' });
     }
-
     const profile = await pool.query('SELECT * FROM installer_profiles WHERE profile_id = $1', [profileId]);
-    console.log(`--- DEBUG: Zapytanie do bazy zwróciło ${profile.rows.length} wierszy. ---`);
-
     if (profile.rows.length > 0) {
       res.json(profile.rows[0]);
     } else {
@@ -142,6 +172,9 @@ exports.updateProfile = async (req, res) => {
             return res.status(403).json({ message: 'Nie masz uprawnień do edycji tego profilu.' });
         }
         
+        // Ta wersja nie obsługuje aktualizacji zdjęć, tylko danych tekstowych.
+        // Logika uploadu zdjęć przy edycji wymagałaby osobnej obsługi.
+        
         if (serviced_inverter_brands && typeof serviced_inverter_brands === 'string') serviced_inverter_brands = JSON.parse(serviced_inverter_brands);
         if (service_types && typeof service_types === 'string') service_types = JSON.parse(service_types);
         if (specializations && typeof specializations === 'string') specializations = JSON.parse(specializations);
@@ -168,4 +201,4 @@ exports.updateProfile = async (req, res) => {
         console.error("Błąd podczas aktualizacji profilu:", error);
         res.status(500).json({ message: 'Błąd serwera lub nieprawidłowy kod pocztowy.' });
     }
-}; 
+};
