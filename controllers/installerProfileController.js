@@ -1,3 +1,4 @@
+// controllers/installerProfileController.js
 const pool = require('../db');
 const axios = require('axios');
 const { Storage } = require('@google-cloud/storage');
@@ -9,37 +10,18 @@ const bucket = storage.bucket(bucketName);
 
 
 // --- FUNKCJE POMOCNICZE ---
-
-/**
- * Wysyła plik do Google Cloud Storage.
- * @param {object} file - Obiekt pliku z req.files.
- * @returns {Promise<string>} Publiczny URL do wgranego pliku.
- */
 const uploadFileToGCS = (file) => {
   return new Promise((resolve, reject) => {
     const { originalname, buffer } = file;
     const blob = bucket.file(Date.now() + "_" + originalname.replace(/ /g, "_"));
-    
-    const blobStream = blob.createWriteStream({
-      resumable: false,
-    });
-
+    const blobStream = blob.createWriteStream({ resumable: false });
     blobStream.on('finish', () => {
       const publicUrl = `https://storage.googleapis.com/${bucket.name}/${blob.name}`;
       resolve(publicUrl);
-    })
-    .on('error', (err) => {
-      reject(`Nie udało się wysłać obrazka: ${err}`);
-    })
-    .end(buffer);
+    }).on('error', (err) => reject(`Nie udało się wysłać obrazka: ${err}`)).end(buffer);
   });
 };
 
-/**
- * Konwertuje kod pocztowy na współrzędne geograficzne.
- * @param {string} postalCode - Kod pocztowy do geokodowania.
- * @returns {Promise<{lat: number, lon: number}>} Obiekt ze współrzędnymi.
- */
 async function geocode(postalCode) {
   const apiKey = process.env.GEOCODING_API_KEY;
   const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(postalCode)}&components=country:PL&key=${apiKey}`;
@@ -159,8 +141,12 @@ exports.updateProfile = async (req, res) => {
 
     try {
         const profileCheck = await pool.query('SELECT installer_id, reference_photo_urls FROM installer_profiles WHERE profile_id = $1', [profileId]);
-        if (profileCheck.rows.length === 0) return res.status(404).json({ message: 'Profil nie istnieje.' });
-        if (profileCheck.rows[0].installer_id !== req.user.userId) return res.status(403).json({ message: 'Nie masz uprawnień do edycji tego profilu.' });
+        if (profileCheck.rows.length === 0) {
+            return res.status(404).json({ message: 'Profil nie istnieje.' });
+        }
+        if (profileCheck.rows[0].installer_id !== req.user.userId) {
+            return res.status(403).json({ message: 'Nie masz uprawnień do edycji tego profilu.' });
+        }
         
         let photoUrls = profileCheck.rows[0].reference_photo_urls || [];
         if (req.files && req.files.length > 0) {
