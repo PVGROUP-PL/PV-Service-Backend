@@ -4,23 +4,58 @@ const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const sgMail = require('@sendgrid/mail');
 sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 
-const PLATFORM_COMMISSION_NET = 200.00;
+const PLATFORM_COMMISSION_NET = 200.00; // Przykładowa prowizja
 
+// ZAKTUALIZOWANA FUNKCJA
 exports.createRequest = async (req, res) => {
-    const { profile_id, preferred_date, project_description } = req.body;
-    const client_id = req.user.userId;
+    // Pobieramy wszystkie nowe pola z formularza
+    const { 
+        profile_id, preferred_date, project_description,
+        installation_type, system_type, inverter_brand_model,
+        installation_age_years, urgency, error_codes
+    } = req.body;
+    
+    // ID zalogowanego klienta z tokenu
+    const clientId = req.user.userId;
+
+    const client = await pool.connect();
     try {
-        const newRequest = await pool.query(
-            'INSERT INTO service_requests (profile_id, client_id, preferred_date, project_description, status) VALUES ($1, $2, $3, $4, $5) RETURNING *',
-            [profile_id, client_id, preferred_date, project_description, 'pending_installer_approval']
+        await client.query('BEGIN');
+
+        // Automatycznie pobieramy numer telefonu klienta z jego profilu w tabeli users
+        const userResult = await client.query('SELECT phone_number FROM users WHERE user_id = $1', [clientId]);
+        if (userResult.rows.length === 0) {
+            throw new Error("Nie znaleziono użytkownika klienta.");
+        }
+        const clientPhone = userResult.rows[0].phone_number;
+
+        const newRequest = await client.query(
+            `INSERT INTO service_requests (
+                profile_id, client_id, preferred_date, project_description, status,
+                client_address, client_phone, installation_type, system_type,
+                inverter_brand_model, installation_age_years, urgency, error_codes
+            ) VALUES ($1, $2, $3, $4, 'pending_installer_approval', $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
+            [
+                profile_id, clientId, preferred_date, project_description,
+                null, // Adres nie jest zbierany w tym formularzu, można dodać w przyszłości
+                clientPhone, installation_type, system_type,
+                inverter_brand_model, installation_age_years, urgency, error_codes
+            ]
         );
+        
+        await client.query('COMMIT');
         res.status(201).json(newRequest.rows[0]);
+
     } catch (error) {
-        console.error("Błąd tworzenia zlecenia serwisowego:", error);
-        res.status(500).json({ message: 'Błąd serwera.' });
+        await client.query('ROLLBACK');
+        console.error('Błąd tworzenia zlecenia serwisowego:', error);
+        res.status(500).json({ message: 'Błąd serwera podczas tworzenia zlecenia.' });
+    } finally {
+        client.release();
     }
 };
 
+// Poniższe funkcje pozostają bez zmian
 exports.updateRequestStatus = async (req, res) => {
     const { requestId } = req.params;
     const { status } = req.body;
@@ -91,7 +126,7 @@ exports.updateRequestStatus = async (req, res) => {
 
 exports.getMyRequests = async (req, res) => {
     const userId = req.user.userId;
-    const userRole = req.user.role;
+    const userRole = req.user.user_type; // Poprawka: user_type zamiast role
     try {
         let requests;
         if (userRole === 'client') {
