@@ -11,17 +11,25 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage: storage });
 
-// Trasa do tworzenia nowego profilu instalatora
+
+// === Trasy POST (tworzenie) ===
 router.post('/', authenticateToken, upload.array('reference_photos', 10), installerProfileController.createProfile);
 
-// Trasa do pobierania własnego profilu (po zalogowaniu)
+
+// === Trasy GET (pobieranie) - kolejność ma znaczenie! ===
+
+// 1. Najpierw najbardziej szczegółowa trasa GET
 router.get('/my-profile', authenticateToken, installerProfileController.getMyProfile);
 
-// Trasa do pobierania WSZYSTKICH profili (publiczna)
-router.get('/', installerProfileController.getAllProfiles); // <--- DODAJ TĘ LINIĘ
+// 2. Następnie trasa dla wszystkich profili (publiczna)
+router.get('/', installerProfileController.getAllProfiles); 
 
-// W przyszłości dodamy tu pozostałe trasy
-// router.get('/:profileId', installerProfileController.getProfileById);
-// router.put('/:profileId', authenticateToken, upload.array('reference_photos', 10), installerProfileController.updateProfile);
+// 3. Na samym końcu trasy z parametrem (wildcard), ponieważ pasują do wielu rzeczy
+router.get('/:profileId', installerProfileController.getProfileById);
+
+
+// === Trasy PUT (aktualizacja) ===
+router.put('/:profileId', authenticateToken, upload.array('reference_photos', 10), installerProfileController.updateProfile);
+
 
 module.exports = router;
