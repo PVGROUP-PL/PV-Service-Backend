@@ -126,25 +126,34 @@ exports.updateRequestStatus = async (req, res) => {
 
 exports.getMyRequests = async (req, res) => {
     const userId = req.user.userId;
-    const userRole = req.user.user_type; // Poprawka: user_type zamiast role
+    const userRole = req.user.user_type; 
     try {
-        let requests;
+        let query;
+        const values = [userId];
+
         if (userRole === 'client') {
-            requests = await pool.query(
-                'SELECT sr.*, ip.service_name, ip.installer_id FROM service_requests sr JOIN installer_profiles ip ON sr.profile_id = ip.profile_id WHERE sr.client_id = $1 ORDER BY sr.created_at DESC', 
-                [userId]
-            );
+            query = `
+                SELECT sr.*, ip.service_name, ip.installer_id 
+                FROM service_requests sr 
+                JOIN installer_profiles ip ON sr.profile_id = ip.profile_id 
+                WHERE sr.client_id = $1 
+                ORDER BY sr.created_at DESC`;
         } else { // installer
-            requests = await pool.query(
-                `SELECT sr.*, u.email as client_email, sr.client_id 
-                 FROM service_requests sr 
-                 JOIN installer_profiles ip ON sr.profile_id = ip.profile_id 
-                 JOIN users u ON sr.client_id = u.user_id 
-                 WHERE ip.installer_id = $1 
-                 ORDER BY sr.created_at DESC`, 
-                [userId]
-            );
+            query = `
+                SELECT 
+                    sr.*, 
+                    u.email as client_email, 
+                    u.first_name as client_first_name, 
+                    u.last_name as client_last_name,
+                    sr.client_id 
+                FROM service_requests sr 
+                JOIN installer_profiles ip ON sr.profile_id = ip.profile_id 
+                JOIN users u ON sr.client_id = u.user_id 
+                WHERE ip.installer_id = $1 
+                ORDER BY sr.created_at DESC`;
         }
+        
+        const requests = await pool.query(query, values);
         res.json(requests.rows);
     } catch (error) {
         console.error("Błąd pobierania zleceń:", error);
