@@ -168,4 +168,4 @@ exports.updateProfile = async (req, res) => {
         console.error("Błąd podczas aktualizacji profilu:", error);
         res.status(500).json({ message: 'Błąd serwera lub nieprawidłowy kod pocztowy.' });
     }
-};
+}; 
