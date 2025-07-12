@@ -93,16 +93,20 @@ exports.getAllProfiles = async (req, res) => {
     }
 };
 
-// Pobieranie jednego, konkretnego profilu instalatora po jego ID
+// Pobieranie jednego, konkretnego profilu instalatora po jego ID (z logowaniem)
 exports.getProfileById = async (req, res) => {
   try {
-    const profileId = parseInt(req.params.profileId, 10);
+    console.log(`--- DEBUG: Otrzymano żądanie dla profileId: '${req.params.profileId}' (typ: ${typeof req.params.profileId}) ---`);
 
+    const profileId = parseInt(req.params.profileId, 10);
+    console.log(`--- DEBUG: Po konwersji parseInt, profileId to: ${profileId} (typ: ${typeof profileId}) ---`);
+    
     if (isNaN(profileId)) {
       return res.status(400).json({ message: 'Nieprawidłowe ID profilu.' });
     }
 
     const profile = await pool.query('SELECT * FROM installer_profiles WHERE profile_id = $1', [profileId]);
+    console.log(`--- DEBUG: Zapytanie do bazy zwróciło ${profile.rows.length} wierszy. ---`);
 
     if (profile.rows.length > 0) {
       res.json(profile.rows[0]);
