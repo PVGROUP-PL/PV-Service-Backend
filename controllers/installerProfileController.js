@@ -12,7 +12,7 @@ const bucket = storage.bucket(bucketName);
 // --- FUNKCJE POMOCNICZE ---
 
 /**
- * Wysyła plik do Google Cloud Storage i czyni go publicznym.
+ * Wysyła plik do Google Cloud Storage.
  * @param {object} file - Obiekt pliku z req.files.
  * @returns {Promise<string>} Publiczny URL do wgranego pliku.
  */
@@ -25,14 +25,9 @@ const uploadFileToGCS = (file) => {
       resumable: false,
     });
 
-    blobStream.on('finish', async () => {
-      try {
-        await blob.makePublic();
-        const publicUrl = `https://storage.googleapis.com/${bucket.name}/${blob.name}`;
-        resolve(publicUrl);
-      } catch (err) {
-        reject(`Nie udało się upublicznić pliku: ${err}`);
-      }
+    blobStream.on('finish', () => {
+      const publicUrl = `https://storage.googleapis.com/${bucket.name}/${blob.name}`;
+      resolve(publicUrl);
     })
     .on('error', (err) => {
       reject(`Nie udało się wysłać obrazka: ${err}`);
